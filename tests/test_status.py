@@ -8,6 +8,25 @@ def _fake_completed(stdout: str, returncode: int = 0):
     return SimpleNamespace(stdout=stdout, stderr="", returncode=returncode)
 
 
+def test_probe_machine_uses_batch_mode_and_accepts_new_host_keys(monkeypatch):
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = argv
+        return _fake_completed("RECHNA_STATUS||0|0|-\n")
+
+    monkeypatch.setattr("rechna.status.subprocess.run", fake_run)
+    machine = Machine("nc-9-1-1", "Host nc-9-1-1\n", frozenset({"5090"}))
+
+    status.probe_machine(machine)
+
+    argv = captured["argv"]
+    assert "BatchMode=yes" in argv
+    # BatchMode disables prompts entirely, so a never-seen host key must
+    # be auto-accepted (not left to hang/fail on a prompt that can't show).
+    assert "StrictHostKeyChecking=accept-new" in argv
+
+
 def test_probe_machine_parses_single_gpu(monkeypatch):
     monkeypatch.setattr(
         "rechna.status.subprocess.run",

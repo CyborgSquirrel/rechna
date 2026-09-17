@@ -92,6 +92,15 @@ def probe_machine(machine: Machine, timeout: float = 8.0) -> MachineStatus:
                     "BatchMode=yes",
                     "-o",
                     "ConnectTimeout=5",
+                    # BatchMode disables prompts entirely, so a host key
+                    # ssh hasn't seen before would otherwise just fail the
+                    # connection outright rather than asking. accept-new
+                    # auto-trusts a *new* host (first-contact TOFU, same
+                    # as answering "yes" to the interactive prompt
+                    # `connect` would show) but still refuses a host whose
+                    # key later *changes*, which stays a hard failure.
+                    "-o",
+                    "StrictHostKeyChecking=accept-new",
                     machine.name,
                     _REMOTE_SCRIPT,
                 ],
