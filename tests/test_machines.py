@@ -43,3 +43,12 @@ def test_each_group_is_independently_usable():
             for name, (config, tags) in entries.items()
             if name != "tum-halle"
         )
+
+
+def test_each_machine_config_is_individually_self_sufficient():
+    entries = all_machines()
+    for name, machine in entries.items():
+        if name == "tum-halle":
+            continue
+        assert "Host tum-halle" in machine.config
+        assert f"Host {name}" in machine.config

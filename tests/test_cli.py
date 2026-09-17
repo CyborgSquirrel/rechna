@@ -26,7 +26,7 @@ def test_config_filters_by_tag(capsys):
     assert "nc-11-1-1" not in output
 
 
-def test_connect_execs_ssh_with_full_config(monkeypatch, tmp_path):
+def test_connect_execs_ssh_with_single_machine_config(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr("rechna.cli.os.execvp", lambda *a: calls.append(a))
     monkeypatch.setattr("rechna.cli.tempfile.gettempdir", lambda: str(tmp_path))
@@ -39,8 +39,9 @@ def test_connect_execs_ssh_with_full_config(monkeypatch, tmp_path):
     assert argv[0] == "ssh"
     assert argv[1] == "-F"
     config_text = Path(argv[2]).read_text()
-    assert "Host tum-halle" in config_text  # needed for ProxyJump
+    assert "Host tum-halle" in config_text  # embedded, needed for ProxyJump
     assert "Host nc-9-3-2" in config_text
+    assert "Host nc-9-1-1" not in config_text  # only the target machine, not all 26
     assert argv[3] == "nc-9-3-2"
     assert argv[4:] == []
 

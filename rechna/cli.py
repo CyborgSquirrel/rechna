@@ -8,16 +8,10 @@ from . import machines  # noqa: F401 -- import triggers @group registration
 from .registry import Machine, all_machines, filter_by_tags
 
 
-def _write_ssh_config(entries: dict[str, Machine]) -> Path:
-    """Write every machine's config to a shared temp file and return its path.
-
-    Includes all machines, not just the one being connected to, since a
-    machine's own config block only has `ProxyJump tum-halle` -- the
-    tum-halle Host block itself has to be present in the same file for
-    ssh to resolve it.
-    """
+def _write_ssh_config(machine: Machine) -> Path:
+    """Write a single machine's (self-sufficient) config to a temp file."""
     path = Path(tempfile.gettempdir()) / f"rechna-{os.getuid()}.ssh_config"
-    path.write_text("\n".join(machine.config for machine in entries.values()))
+    path.write_text(machine.config)
     return path
 
 
@@ -66,7 +60,7 @@ def main(argv: list[str] | None = None) -> None:
                 file=sys.stderr,
             )
             raise SystemExit(1)
-        config_path = _write_ssh_config(entries)
+        config_path = _write_ssh_config(entries[args.name])
         os.execvp("ssh", ["ssh", "-F", str(config_path), args.name, *args.ssh_args])
 
 

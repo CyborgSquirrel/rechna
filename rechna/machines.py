@@ -10,31 +10,25 @@ USERNAME = "changeme"
 IDENTITY_FILE = "~/.ssh/changeme"
 
 
-def _tum_halle() -> tuple[str, str, tuple[str, ...]]:
-    return (
-        "tum-halle",
-        f"""\
+def _tum_halle_block() -> str:
+    return f"""\
 Host tum-halle
     HostName halle.cit.tum.de
     User {USERNAME}
     IdentityFile {IDENTITY_FILE}
     IdentitiesOnly yes
     ObscureKeystrokeTiming no
-""",
-        (),
-    )
+"""
 
 
 @group
 def nc_9_5090():
     """5090 nodes: nc-9-<1-5>-<1-3>."""
-    yield _tum_halle()
+    yield "tum-halle", _tum_halle_block(), ()
     for a in range(1, 6):
         for b in range(1, 4):
             name = f"nc-9-{a}-{b}"
-            yield (
-                name,
-                f"""\
+            own_block = f"""\
 Host {name}
     HostName {name}.kosmos.cit.tum.de
     User {USERNAME}
@@ -43,21 +37,20 @@ Host {name}
     IdentitiesOnly yes
     ForwardX11 yes
     ForwardX11Trusted yes
-""",
-                ("5090",),
-            )
+"""
+            # tum-halle is embedded so this single machine's config is
+            # self-sufficient (usable on its own with `ssh -F`).
+            yield name, _tum_halle_block() + "\n" + own_block, ("5090",)
 
 
 @group
 def nc_11_5080():
     """5080 nodes: nc-11-<1-2>-<1-5>."""
-    yield _tum_halle()
+    yield "tum-halle", _tum_halle_block(), ()
     for a in range(1, 3):
         for b in range(1, 6):
             name = f"nc-11-{a}-{b}"
-            yield (
-                name,
-                f"""\
+            own_block = f"""\
 Host {name}
     HostName {name}.kosmos.cit.tum.de
     User {USERNAME}
@@ -66,6 +59,5 @@ Host {name}
     IdentitiesOnly yes
     ForwardX11 yes
     ForwardX11Trusted yes
-""",
-                ("5080",),
-            )
+"""
+            yield name, _tum_halle_block() + "\n" + own_block, ("5080",)
