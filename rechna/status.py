@@ -19,8 +19,17 @@ from .registry import Machine
 SENTINEL = "RECHNA_STATUS"
 
 _REMOTE_SCRIPT = r"""
-gpu=$(nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total \
-      --format=csv,noheader,nounits 2>/dev/null | tr '\n' ';')
+gpu=""
+if command -v nvidia-smi >/dev/null 2>&1; then
+    gpu=$(nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total \
+          --format=csv,noheader,nounits 2>/dev/null | tr '\n' ';')
+    # nvidia-smi can exist but fail (e.g. driver not loaded), sometimes
+    # printing its error to stdout rather than stderr -- only trust
+    # output that actually looks like the requested CSV.
+    if ! printf '%s' "$gpu" | grep -Eq '^([0-9]+ *, *[0-9]+ *, *[0-9]+ *;?)+$'; then
+        gpu=""
+    fi
+fi
 read _ c1u c1n c1s c1i _ < /proc/stat
 sleep 0.3
 read _ c2u c2n c2s c2i _ < /proc/stat
@@ -44,19 +53,33 @@ class MachineStatus:
     error: str | None = None
 
 
-def _parse_line(name: str, line: str) -> MachineStatus:
-    _, gpu_field, cpu_field, mem_field, users_field = line.split("|", 4)
-
+def _parse_gpus(gpu_field: str) -> list[tuple[float, float]]:
     gpus = []
     for entry in gpu_field.strip(";").split(";"):
         entry = entry.strip()
         if not entry:
             continue
-        util_str, used_str, total_str = (part.strip() for part in entry.split(","))
-        util = float(util_str)
-        total = float(total_str)
-        mem_pct = (float(used_str) / total * 100) if total > 0 else 0.0
+        try:
+            util_str, used_str, total_str = (
+                part.strip() for part in entry.split(",")
+            )
+            util = float(util_str)
+            total = float(total_str)
+            mem_pct = (float(used_str) / total * 100) if total > 0 else 0.0
+        except ValueError:
+            # nvidia-smi produced something we don't recognize (e.g. a
+            # driver error message that slipped through) -- treat this
+            # machine as having no usable GPU data rather than losing the
+            # otherwise-valid CPU/mem/users fields on the same line.
+            continue
         gpus.append((util, mem_pct))
+    return gpus
+
+
+def _parse_line(name: str, line: str) -> MachineStatus:
+    _, gpu_field, cpu_field, mem_field, users_field = line.split("|", 4)
+
+    gpus = _parse_gpus(gpu_field)
 
     users = [] if users_field == "-" else users_field.split(",")
 

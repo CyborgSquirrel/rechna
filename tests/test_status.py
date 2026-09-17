@@ -82,6 +82,28 @@ def test_probe_machine_no_gpu(monkeypatch):
     assert result.mem_pct == 33
 
 
+def test_probe_machine_garbage_gpu_field_still_yields_cpu_mem_users(monkeypatch):
+    # Defense in depth: even if something unexpected slipped past the
+    # remote script's own nvidia-smi-output validation, a malformed GPU
+    # section should degrade to "-" rather than discarding otherwise-good
+    # CPU/mem/users data (i.e. no "bad response" for a GPU-only problem).
+    monkeypatch.setattr(
+        "rechna.status.subprocess.run",
+        lambda *a, **k: _fake_completed(
+            "RECHNA_STATUS|couldn't communicate with driver;|14|34|andrei\n"
+        ),
+    )
+    machine = Machine("no-driver", "Host no-driver\n", frozenset())
+
+    result = status.probe_machine(machine)
+
+    assert result.error is None
+    assert result.gpus == []
+    assert result.cpu_pct == 14
+    assert result.mem_pct == 34
+    assert result.users == ["andrei"]
+
+
 def test_probe_machine_missing_sentinel_is_unreachable(monkeypatch):
     monkeypatch.setattr(
         "rechna.status.subprocess.run",
