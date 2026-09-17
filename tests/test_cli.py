@@ -27,6 +27,41 @@ def test_config_filters_by_tag(capsys):
     assert "nc-11-1-1" not in output
 
 
+def test_status_excludes_tum_halle_by_default(monkeypatch):
+    from rechna import status
+
+    captured = {}
+
+    def fake_probe_all(machines_dict, max_workers=16):
+        captured["names"] = set(machines_dict)
+        return []
+
+    monkeypatch.setattr(status, "probe_all", fake_probe_all)
+    monkeypatch.setattr(status, "format_table", lambda statuses: "")
+
+    main(["status"])
+
+    assert "tum-halle" not in captured["names"]
+    assert len(captured["names"]) == 25
+
+
+def test_status_tag_narrows_further(monkeypatch):
+    from rechna import status
+
+    captured = {}
+
+    def fake_probe_all(machines_dict, max_workers=16):
+        captured["names"] = set(machines_dict)
+        return []
+
+    monkeypatch.setattr(status, "probe_all", fake_probe_all)
+    monkeypatch.setattr(status, "format_table", lambda statuses: "")
+
+    main(["status", "--tag", "5090"])
+
+    assert captured["names"] == {f"nc-9-{a}-{b}" for a in range(1, 6) for b in range(1, 4)}
+
+
 def test_connect_runs_ssh_with_single_machine_config(monkeypatch):
     captured = {}
 
