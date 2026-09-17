@@ -37,6 +37,12 @@ def main(argv: list[str] | None = None) -> None:
         action="append",
         help="only include machines with this tag (repeatable, OR'd together)",
     )
+    status_parser.add_argument(
+        "names",
+        nargs="*",
+        help="only check these specific machines (by exact name, as shown by "
+        "`rechna list`); if omitted, checks every tagged (GPU) machine",
+    )
 
     connect_parser = sub.add_parser("connect", help="ssh into a machine by name")
     connect_parser.add_argument("name", help="machine name, as shown by `rechna list`")
@@ -57,8 +63,19 @@ def main(argv: list[str] | None = None) -> None:
         for machine in filter_by_tags(entries, args.tag).values():
             print(machine.config)
     elif args.command == "status":
-        gpu_machines = {name: m for name, m in entries.items() if m.tags}
-        target = filter_by_tags(gpu_machines, args.tag)
+        if args.names:
+            unknown = [n for n in args.names if n not in entries]
+            if unknown:
+                print(
+                    f"rechna: no such machine(s): {', '.join(unknown)} "
+                    "(see `rechna list`)",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
+            base = {n: entries[n] for n in args.names}
+        else:
+            base = {name: m for name, m in entries.items() if m.tags}
+        target = filter_by_tags(base, args.tag)
         print(status.format_table(status.probe_all(target)))
     elif args.command == "connect":
         if args.name not in entries:

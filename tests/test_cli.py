@@ -62,6 +62,66 @@ def test_status_tag_narrows_further(monkeypatch):
     assert captured["names"] == {f"nc-9-{a}-{b}" for a in range(1, 6) for b in range(1, 4)}
 
 
+def test_status_filters_by_explicit_names(monkeypatch):
+    from rechna import status
+
+    captured = {}
+
+    def fake_probe_all(machines_dict, max_workers=16):
+        captured["names"] = set(machines_dict)
+        return []
+
+    monkeypatch.setattr(status, "probe_all", fake_probe_all)
+    monkeypatch.setattr(status, "format_table", lambda statuses: "")
+
+    main(["status", "nc-9-1-1", "nc-11-2-3"])
+
+    assert captured["names"] == {"nc-9-1-1", "nc-11-2-3"}
+
+
+def test_status_explicit_name_bypasses_tag_requirement(monkeypatch):
+    # tum-halle has no tags and is excluded by default, but naming it
+    # explicitly should still work.
+    from rechna import status
+
+    captured = {}
+
+    def fake_probe_all(machines_dict, max_workers=16):
+        captured["names"] = set(machines_dict)
+        return []
+
+    monkeypatch.setattr(status, "probe_all", fake_probe_all)
+    monkeypatch.setattr(status, "format_table", lambda statuses: "")
+
+    main(["status", "tum-halle"])
+
+    assert captured["names"] == {"tum-halle"}
+
+
+def test_status_names_and_tag_combine_as_intersection(monkeypatch):
+    from rechna import status
+
+    captured = {}
+
+    def fake_probe_all(machines_dict, max_workers=16):
+        captured["names"] = set(machines_dict)
+        return []
+
+    monkeypatch.setattr(status, "probe_all", fake_probe_all)
+    monkeypatch.setattr(status, "format_table", lambda statuses: "")
+
+    main(["status", "--tag", "5090", "nc-9-1-1", "nc-11-2-3"])
+
+    # nc-11-2-3 doesn't carry the 5090 tag, so it's filtered back out.
+    assert captured["names"] == {"nc-9-1-1"}
+
+
+def test_status_unknown_name_errors(capsys):
+    with pytest.raises(SystemExit):
+        main(["status", "nonexistent-machine"])
+    assert "nonexistent-machine" in capsys.readouterr().err
+
+
 def test_connect_runs_ssh_with_single_machine_config(monkeypatch):
     captured = {}
 
