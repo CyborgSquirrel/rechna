@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -26,35 +27,72 @@ def test_config_filters_by_tag(capsys):
     assert "nc-11-1-1" not in output
 
 
-def test_connect_execs_ssh_with_single_machine_config(monkeypatch, tmp_path):
-    calls = []
-    monkeypatch.setattr("rechna.cli.os.execvp", lambda *a: calls.append(a))
-    monkeypatch.setattr("rechna.cli.tempfile.gettempdir", lambda: str(tmp_path))
+def test_connect_runs_ssh_with_single_machine_config(monkeypatch):
+    captured = {}
 
-    main(["connect", "nc-9-3-2"])
+    def fake_run(argv):
+        captured["argv"] = argv
+        captured["config_text"] = Path(argv[2]).read_text()
+        return SimpleNamespace(returncode=0)
 
-    assert len(calls) == 1
-    program, argv = calls[0]
-    assert program == "ssh"
+    monkeypatch.setattr("rechna.cli.subprocess.run", fake_run)
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["connect", "nc-9-3-2"])
+
+    assert exc_info.value.code == 0
+    argv = captured["argv"]
     assert argv[0] == "ssh"
     assert argv[1] == "-F"
-    config_text = Path(argv[2]).read_text()
+    assert argv[3] == "nc-9-3-2"
+    assert argv[4:] == []
+    config_text = captured["config_text"]
     assert "Host tum-halle" in config_text  # embedded, needed for ProxyJump
     assert "Host nc-9-3-2" in config_text
     assert "Host nc-9-1-1" not in config_text  # only the target machine, not all 26
-    assert argv[3] == "nc-9-3-2"
-    assert argv[4:] == []
 
 
-def test_connect_passes_through_extra_ssh_args(monkeypatch, tmp_path):
-    calls = []
-    monkeypatch.setattr("rechna.cli.os.execvp", lambda *a: calls.append(a))
-    monkeypatch.setattr("rechna.cli.tempfile.gettempdir", lambda: str(tmp_path))
+def test_connect_config_file_removed_after_run(monkeypatch):
+    captured = {}
 
-    main(["connect", "nc-9-3-2", "-L", "8080:localhost:8080"])
+    def fake_run(argv):
+        captured["path"] = Path(argv[2])
+        assert captured["path"].exists()
+        return SimpleNamespace(returncode=0)
 
-    _, argv = calls[0]
-    assert argv[-2:] == ["-L", "8080:localhost:8080"]
+    monkeypatch.setattr("rechna.cli.subprocess.run", fake_run)
+
+    with pytest.raises(SystemExit):
+        main(["connect", "nc-9-3-2"])
+
+    assert not captured["path"].exists()
+    assert not captured["path"].parent.exists()
+
+
+def test_connect_passes_through_extra_ssh_args(monkeypatch):
+    captured = {}
+
+    def fake_run(argv):
+        captured["argv"] = argv
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("rechna.cli.subprocess.run", fake_run)
+
+    with pytest.raises(SystemExit):
+        main(["connect", "nc-9-3-2", "-L", "8080:localhost:8080"])
+
+    assert captured["argv"][-2:] == ["-L", "8080:localhost:8080"]
+
+
+def test_connect_propagates_ssh_exit_code(monkeypatch):
+    monkeypatch.setattr(
+        "rechna.cli.subprocess.run", lambda argv: SimpleNamespace(returncode=42)
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["connect", "nc-9-3-2"])
+
+    assert exc_info.value.code == 42
 
 
 def test_connect_unknown_machine_errors(capsys):

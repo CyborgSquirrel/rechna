@@ -1,18 +1,11 @@
 import argparse
-import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 from . import machines  # noqa: F401 -- import triggers @group registration
-from .registry import Machine, all_machines, filter_by_tags
-
-
-def _write_ssh_config(machine: Machine) -> Path:
-    """Write a single machine's (self-sufficient) config to a temp file."""
-    path = Path(tempfile.gettempdir()) / f"rechna-{os.getuid()}.ssh_config"
-    path.write_text(machine.config)
-    return path
+from .registry import all_machines, filter_by_tags
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -60,8 +53,13 @@ def main(argv: list[str] | None = None) -> None:
                 file=sys.stderr,
             )
             raise SystemExit(1)
-        config_path = _write_ssh_config(entries[args.name])
-        os.execvp("ssh", ["ssh", "-F", str(config_path), args.name, *args.ssh_args])
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "ssh_config"
+            config_path.write_text(entries[args.name].config)
+            result = subprocess.run(
+                ["ssh", "-F", str(config_path), args.name, *args.ssh_args]
+            )
+        raise SystemExit(result.returncode)
 
 
 if __name__ == "__main__":
