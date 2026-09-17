@@ -1,3 +1,7 @@
+from pathlib import Path
+
+import pytest
+
 from rechna.cli import main
 
 
@@ -20,3 +24,39 @@ def test_config_filters_by_tag(capsys):
     output = capsys.readouterr().out
     assert "nc-9-1-1" in output
     assert "nc-11-1-1" not in output
+
+
+def test_connect_execs_ssh_with_full_config(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr("rechna.cli.os.execvp", lambda *a: calls.append(a))
+    monkeypatch.setattr("rechna.cli.tempfile.gettempdir", lambda: str(tmp_path))
+
+    main(["connect", "nc-9-3-2"])
+
+    assert len(calls) == 1
+    program, argv = calls[0]
+    assert program == "ssh"
+    assert argv[0] == "ssh"
+    assert argv[1] == "-F"
+    config_text = Path(argv[2]).read_text()
+    assert "Host tum-halle" in config_text  # needed for ProxyJump
+    assert "Host nc-9-3-2" in config_text
+    assert argv[3] == "nc-9-3-2"
+    assert argv[4:] == []
+
+
+def test_connect_passes_through_extra_ssh_args(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr("rechna.cli.os.execvp", lambda *a: calls.append(a))
+    monkeypatch.setattr("rechna.cli.tempfile.gettempdir", lambda: str(tmp_path))
+
+    main(["connect", "nc-9-3-2", "-L", "8080:localhost:8080"])
+
+    _, argv = calls[0]
+    assert argv[-2:] == ["-L", "8080:localhost:8080"]
+
+
+def test_connect_unknown_machine_errors(capsys):
+    with pytest.raises(SystemExit):
+        main(["connect", "nonexistent-machine"])
+    assert "nonexistent-machine" in capsys.readouterr().err
