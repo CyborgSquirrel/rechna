@@ -30,7 +30,7 @@ def test_config_filters_by_tag(capsys):
 def test_connect_runs_ssh_with_single_machine_config(monkeypatch):
     captured = {}
 
-    def fake_run(argv):
+    def fake_run(argv, env=None):
         captured["argv"] = argv
         captured["config_text"] = Path(argv[2]).read_text()
         return SimpleNamespace(returncode=0)
@@ -55,7 +55,7 @@ def test_connect_runs_ssh_with_single_machine_config(monkeypatch):
 def test_connect_config_file_removed_after_run(monkeypatch):
     captured = {}
 
-    def fake_run(argv):
+    def fake_run(argv, env=None):
         captured["path"] = Path(argv[2])
         assert captured["path"].exists()
         return SimpleNamespace(returncode=0)
@@ -72,7 +72,7 @@ def test_connect_config_file_removed_after_run(monkeypatch):
 def test_connect_passes_through_extra_ssh_args(monkeypatch):
     captured = {}
 
-    def fake_run(argv):
+    def fake_run(argv, env=None):
         captured["argv"] = argv
         return SimpleNamespace(returncode=0)
 
@@ -86,13 +86,33 @@ def test_connect_passes_through_extra_ssh_args(monkeypatch):
 
 def test_connect_propagates_ssh_exit_code(monkeypatch):
     monkeypatch.setattr(
-        "rechna.cli.subprocess.run", lambda argv: SimpleNamespace(returncode=42)
+        "rechna.cli.subprocess.run",
+        lambda argv, env=None: SimpleNamespace(returncode=42),
     )
 
     with pytest.raises(SystemExit) as exc_info:
         main(["connect", "nc-9-3-2"])
 
     assert exc_info.value.code == 42
+
+
+def test_connect_unsets_shell_env_var(monkeypatch):
+    monkeypatch.setenv("SHELL", "/some/nonposix/shell")
+    monkeypatch.setenv("SOME_OTHER_VAR", "kept")
+    captured = {}
+
+    def fake_run(argv, env=None):
+        captured["env"] = env
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("rechna.cli.subprocess.run", fake_run)
+
+    with pytest.raises(SystemExit):
+        main(["connect", "nc-9-3-2"])
+
+    env = captured["env"]
+    assert "SHELL" not in env
+    assert env["SOME_OTHER_VAR"] == "kept"
 
 
 def test_connect_unknown_machine_errors(capsys):

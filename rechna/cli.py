@@ -1,4 +1,5 @@
 import argparse
+import os
 import subprocess
 import sys
 import tempfile
@@ -56,8 +57,13 @@ def main(argv: list[str] | None = None) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             config_path = Path(tmp_dir) / "ssh_config"
             config_path.write_text(entries[args.name].config)
+            # SHELL leaking into ssh's environment (e.g. from a non-POSIX
+            # shell) has been observed to cause issues -- unset it.
+            env = os.environ.copy()
+            env.pop("SHELL", None)
             result = subprocess.run(
-                ["ssh", "-F", str(config_path), args.name, *args.ssh_args]
+                ["ssh", "-F", str(config_path), args.name, *args.ssh_args],
+                env=env,
             )
         raise SystemExit(result.returncode)
 
