@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 from . import machines  # noqa: F401 -- import triggers @group registration
-from . import status
+from . import settings, status
 from .registry import all_machines, filter_by_tags
 
 
@@ -55,7 +55,11 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
-    entries = all_machines()
+    try:
+        entries = all_machines()
+    except settings.ConfigError as e:
+        print(f"rechna: {e}", file=sys.stderr)
+        raise SystemExit(1)
 
     if args.command == "list":
         for name in filter_by_tags(entries, args.tag):
