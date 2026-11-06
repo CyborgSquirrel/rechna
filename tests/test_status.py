@@ -1,11 +1,13 @@
 from types import SimpleNamespace
 
+import pytest
+
 from rechna import status
 from rechna.registry import Machine
 
 
-def _fake_completed(stdout: str, returncode: int = 0):
-    return SimpleNamespace(stdout=stdout, stderr="", returncode=returncode)
+def _fake_completed(stdout: str, returncode: int = 0, stderr: str = ""):
+    return SimpleNamespace(stdout=stdout, stderr=stderr, returncode=returncode)
 
 
 def test_probe_machine_uses_batch_mode_and_accepts_new_host_keys(monkeypatch):
@@ -116,7 +118,29 @@ def test_probe_machine_missing_sentinel_is_unreachable(monkeypatch):
     assert result.error == "unreachable"
 
 
-def test_probe_machine_timeout_is_unreachable(monkeypatch):
+@pytest.mark.parametrize(
+    "stderr,label",
+    [
+        ("jand@host: Permission denied (publickey).\n", "auth failed"),
+        ("channel 0: open failed: connect failed: No route to host\n", "no route"),
+        ("ssh: connect to host x port 22: Connection refused\n", "refused"),
+        ("ssh: Could not resolve hostname x\n", "dns failed"),
+        ("open failed: connect failed: Name or service not known\n", "dns failed"),
+        ("Connection timed out during banner exchange\n", "timeout"),
+        ("something unexpected\n", "unreachable"),
+    ],
+)
+def test_probe_machine_classifies_ssh_failure(monkeypatch, stderr, label):
+    monkeypatch.setattr(
+        status.subprocess,
+        "run",
+        lambda *a, **k: _fake_completed("", returncode=255, stderr=stderr),
+    )
+    result = status.probe_machine(Machine("m", "Host m\n"))
+    assert result.error == label
+
+
+def test_probe_machine_timeout_is_timeout(monkeypatch):
     import subprocess
 
     def raise_timeout(*a, **k):
@@ -127,7 +151,7 @@ def test_probe_machine_timeout_is_unreachable(monkeypatch):
 
     result = status.probe_machine(machine)
 
-    assert result.error == "unreachable"
+    assert result.error == "timeout"
 
 
 def test_probe_machine_malformed_line_is_bad_response(monkeypatch):

@@ -92,6 +92,29 @@ def _parse_line(name: str, line: str) -> MachineStatus:
     )
 
 
+# (substring of ssh's stderr, label) -- first match wins. ssh has no
+# machine-readable failure codes (it exits 255 for everything), so the
+# message text is the only way to tell the causes apart.
+_SSH_ERROR_LABELS = [
+    ("Permission denied", "auth failed"),
+    ("No route to host", "no route"),
+    ("Host key verification failed", "host key changed"),
+    ("REMOTE HOST IDENTIFICATION HAS CHANGED", "host key changed"),
+    ("Connection refused", "refused"),
+    ("Could not resolve hostname", "dns failed"),
+    # Same failure, but reported by the jump host resolving the target.
+    ("Name or service not known", "dns failed"),
+    ("timed out", "timeout"),
+]
+
+
+def _classify_ssh_error(stderr: str) -> str:
+    for needle, label in _SSH_ERROR_LABELS:
+        if needle in stderr:
+            return label
+    return "unreachable"
+
+
 def probe_machine(machine: Machine, timeout: float = 8.0) -> MachineStatus:
     """Run the remote probe script on ``machine`` over SSH.
 
@@ -133,7 +156,7 @@ def probe_machine(machine: Machine, timeout: float = 8.0) -> MachineStatus:
                 timeout=timeout,
             )
     except subprocess.TimeoutExpired:
-        return MachineStatus(machine.name, [], None, None, [], error="unreachable")
+        return MachineStatus(machine.name, [], None, None, [], error="timeout")
 
     for line in result.stdout.splitlines():
         if line.startswith(f"{SENTINEL}|"):
@@ -144,7 +167,14 @@ def probe_machine(machine: Machine, timeout: float = 8.0) -> MachineStatus:
                     machine.name, [], None, None, [], error="bad response"
                 )
 
-    return MachineStatus(machine.name, [], None, None, [], error="unreachable")
+    return MachineStatus(
+        machine.name,
+        [],
+        None,
+        None,
+        [],
+        error=_classify_ssh_error(result.stderr or ""),
+    )
 
 
 def probe_all(
